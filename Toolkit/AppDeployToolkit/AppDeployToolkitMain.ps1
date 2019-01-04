@@ -6308,7 +6308,7 @@ Function Show-WelcomePrompt {
 		If ($configInstallationWelcomePromptDynamicRunningProcessEvaluation) {                
 				$timerRunningProcesses = New-Object -TypeName 'System.Windows.Forms.Timer'
 				$timerRunningProcesses.Interval = ($configInstallationWelcomePromptDynamicRunningProcessEvaluationInterval * 1000)
-				[scriptblock]$timerRunningProcesses_Tick = { Get-RunningProcessesDynamically }
+				[scriptblock]$timerRunningProcesses_Tick = { try { Get-RunningProcessesDynamically } catch {} }
 				$timerRunningProcesses.add_Tick($timerRunningProcesses_Tick)
 				$timerRunningProcesses.Start()		
 		}
@@ -6629,7 +6629,9 @@ Function Show-WelcomePrompt {
 			Yes { $result = 'Close' }
 			Abort { $result = 'Timeout' }
 		}
-		
+		If ($configInstallationWelcomePromptDynamicRunningProcessEvaluation) {
+			$timerRunningProcesses.Stop()
+		}
 		Write-Output -InputObject $result
 	}
 	End {
