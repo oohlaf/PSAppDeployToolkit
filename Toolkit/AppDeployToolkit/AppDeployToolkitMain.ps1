@@ -351,7 +351,7 @@ If ($runningTaskSequence) {
 [boolean]$configToolkitLogWriteToHost = [boolean]::Parse($xmlToolkitOptions.Toolkit_LogWriteToHost)
 [boolean]$configToolkitLogDebugMessage = [boolean]::Parse($xmlToolkitOptions.Toolkit_LogDebugMessage)
 If ($runningTaskSequence) {
-    ## Override the toolkit related variables, when present
+    ## Override the toolkit options related variables, when present
     If ($SMSToolkitVariables.ContainsKey('Toolkit')) {
         $SMS_Toolkit = $SMSToolkitVariables.Toolkit
         If ($SMS_Toolkit.ContainsKey('RequireAdmin')) { [boolean]$configToolkitRequireAdmin = $SMS_Toolkit.RequireAdmin }
@@ -374,7 +374,7 @@ If ($runningTaskSequence) {
 [string]$configMSILogDir = $ExecutionContext.InvokeCommand.ExpandString($xmlConfigMSIOptions.MSI_LogPath)
 [int32]$configMSIMutexWaitTime = $xmlConfigMSIOptions.MSI_MutexWaitTime
 If ($runningTaskSequence) {
-    ## Override the MSI related variables, when present
+    ## Override the MSI options related variables, when present
     If ($SMSToolkitVariables.ContainsKey('MSI')) {
         $SMS_MSI = $SMSToolkitVariables.MSI
         If ($SMS_MSI.ContainsKey('LoggingOptions')) { [string]$configMSILoggingOptions = $SMS_MSI.LoggingOptions }
@@ -397,6 +397,22 @@ If ($runningTaskSequence) {
 [int32]$configInstallationPromptToSave = $xmlConfigUIOptions.InstallationPromptToSave_Timeout
 [boolean]$configInstallationWelcomePromptDynamicRunningProcessEvaluation = [boolean]::Parse($xmlConfigUIOptions.InstallationWelcomePrompt_DynamicRunningProcessEvaluation)
 [int32]$configInstallationWelcomePromptDynamicRunningProcessEvaluationInterval = $xmlConfigUIOptions.InstallationWelcomePrompt_DynamicRunningProcessEvaluationInterval
+If ($runningTaskSequence) {
+    ## Override the UI options related variables, when present
+    If ($SMSToolkitVariables.ContainsKey('UI')) {
+        $SMS_UI = $SMSToolkitVariables.UI
+        If ($SMS_UI.ContainsKey('LanguageOverride')) { [string]$configInstallationUILanguageOverride = $SMS_UI.LanguageOverride }
+        If ($SMS_UI.ContainsKey('ShowBalloonNotifications')) { [boolean]$configShowBalloonNotifications = $SMS_UI.ShowBalloonNotifications }
+        If ($SMS_UI.ContainsKey('Timeout')) { [int32]$configInstallationUITimeout = $SMS_UI.Timeout }
+        If ($SMS_UI.ContainsKey('ExitCode')) { [int32]$configInstallationUIExitCode = $SMS_UI.ExitCode }
+        If ($SMS_UI.ContainsKey('DeferExitCode')) { [int32]$configInstallationDeferExitCode = $SMS_UI.DeferExitCode }
+        If ($SMS_UI.ContainsKey('PersistInterval')) { [int32]$configInstallationPersistInterval = $SMS_UI.PersistInterval }
+        If ($SMS_UI.ContainsKey('RestartPersistInterval')) { [int32]$configInstallationRestartPersistInterval = $SMS_UI.RestartPersistInterval }
+        If ($SMS_UI.ContainsKey('PromptToSaveTimeout')) { [int32]$configInstallationPromptToSave = $SMS_UI.PromptToSaveTimeout }
+        If ($SMS_UI.ContainsKey('DynamicRunningProcessEvaluation')) { [boolean]$configInstallationWelcomePromptDynamicRunningProcessEvaluation = $SMS_UI.DynamicRunningProcessEvaluation }
+        If ($SMS_UI.ContainsKey('DynamicRunningProcessEvaluationInterval')) { [int32]$configInstallationWelcomePromptDynamicRunningProcessEvaluationInterval = $SMS_UI.DynamicRunningProcessEvaluationInterval }
+    }
+}
 #  Define ScriptBlock for Loading Message UI Language Options (default for English if no localization found)
 [scriptblock]$xmlLoadLocalizedUIMessages = {
 	#  If a user is logged on, then get primary UI language for logged on user (even if running in session 0)
