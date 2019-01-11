@@ -283,6 +283,7 @@ If ($runningTaskSequence) {
                     "decimal" { [decimal]$TSValue = [decimal]$TSValue; break }
                     "single" { [single]$TSValue = [single]$TSValue; break }
                     "double" { [double]$TSValue = [doublel]$TSValue; break }
+                    "version" { [version]$TSValue = [version]$TSValue; break }
                     default { [string]$TSValue = $TSValue; break }
                 }
             }
@@ -297,8 +298,6 @@ If ($runningTaskSequence) {
             $parent[$sections[-1]] = $TSValue
         }
     }
-    #$out = $SMSToolkitVariables | Format-List | Out-String
-    #Write-Log -Message $out -Source $appDeployToolkitName
 }
 
 ## Variables: App Deploy Script Dependency Files
@@ -332,6 +331,14 @@ If (-not (Test-Path -LiteralPath $appDeployCustomTypesSourceCode -PathType 'Leaf
 [Xml.XmlElement]$configConfigDetails = $xmlConfig.Config_File
 [string]$configConfigVersion = [version]$configConfigDetails.Config_Version
 [string]$configConfigDate = $configConfigDetails.Config_Date
+If ($runningTaskSequence) {
+    ## Override the deploy script related variables, when present
+    If ($SMSToolkitVariables.ContainsKey('Config')) {
+        $SMS_Config = $SMSToolkitVariables.Config
+        If ($SMS_Config.ContainsKey('Version')) { [string]$configConfigVersion = $SMS_Config.Version }
+        If ($SMS_Config.ContainsKey('Date')) { [string]$configConfigDate = $SMS_Config.Date }
+    }
+}
 #  Get Toolkit Options
 [Xml.XmlElement]$xmlToolkitOptions = $xmlConfig.Toolkit_Options
 [boolean]$configToolkitRequireAdmin = [boolean]::Parse($xmlToolkitOptions.Toolkit_RequireAdmin)
@@ -343,6 +350,21 @@ If (-not (Test-Path -LiteralPath $appDeployCustomTypesSourceCode -PathType 'Leaf
 [double]$configToolkitLogMaxSize = $xmlToolkitOptions.Toolkit_LogMaxSize
 [boolean]$configToolkitLogWriteToHost = [boolean]::Parse($xmlToolkitOptions.Toolkit_LogWriteToHost)
 [boolean]$configToolkitLogDebugMessage = [boolean]::Parse($xmlToolkitOptions.Toolkit_LogDebugMessage)
+If ($runningTaskSequence) {
+    ## Override the deploy script related variables, when present
+    If ($SMSToolkitVariables.ContainsKey('Toolkit')) {
+        $SMS_Toolkit = $SMSToolkitVariables.Toolkit
+        If ($SMS_Toolkit.ContainsKey('RequireAdmin')) { [boolean]$configToolkitRequireAdmin = $SMS_Toolkit.RequireAdmin }
+        If ($SMS_Toolkit.ContainsKey('TempPath')) { [string]$configToolkitTempPath = $ExecutionContext.InvokeCommand.ExpandString($SMS_Toolkit.TempPath) }
+        If ($SMS_Toolkit.ContainsKey('RegPath')) { [string]$configToolkitRegPath = $SMS_Toolkit.RegPath }
+        If ($SMS_Toolkit.ContainsKey('LogPath')) { [string]$configToolkitLogDir = $ExecutionContext.InvokeCommand.ExpandString($SMS_Toolkit.LogPath) }
+        If ($SMS_Toolkit.ContainsKey('CompressLogs')) { [boolean]$configToolkitCompressLogs = $SMS_Toolkit.CompressLogs }
+        If ($SMS_Toolkit.ContainsKey('LogStyle')) { [string]$configToolkitLogStyle = $SMS_Toolkit.LogStyle }
+        If ($SMS_Toolkit.ContainsKey('LogMaxSize')) { [double]$configToolkitLogMaxSize = $SMS_Toolkit.LogMaxSize }
+        If ($SMS_Toolkit.ContainsKey('LogWriteToHost')) { [boolean]$configToolkitLogWriteToHost = $SMS_Toolkit.LogWriteToHost }
+        If ($SMS_Toolkit.ContainsKey('LogDebugMessage')) { [boolean]$configToolkitLogDebugMessage = $SMS_Toolkit.LogDebugMessage }
+    }
+}
 #  Get MSI Options
 [Xml.XmlElement]$xmlConfigMSIOptions = $xmlConfig.MSI_Options
 [string]$configMSILoggingOptions = $xmlConfigMSIOptions.MSI_LoggingOptions
