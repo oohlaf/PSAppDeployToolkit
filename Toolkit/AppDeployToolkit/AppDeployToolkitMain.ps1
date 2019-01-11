@@ -241,11 +241,82 @@ Else {
 	[string]$scriptParentPath = (Get-Item -LiteralPath $scriptRoot).Parent.FullName
 }
 
+## Check if script is running from a SCCM Task Sequence
+[boolean]$runningTaskSequence = $false
+[hashtable]$SMSToolkitVariables = @{}
+Try {
+    # The SMSTSEnvironment object is released in the function Exit-Script
+	[__comobject]$SMSTSEnvironment = New-Object -ComObject 'Microsoft.SMS.TSEnvironment' -ErrorAction 'Stop'
+	#Write-Log -Message 'Successfully loaded COM Object [Microsoft.SMS.TSEnvironment]. Therefore, script is currently running from a SCCM Task Sequence.' -Source $appDeployToolkitName
+	$runningTaskSequence = $true
+}
+Catch {
+	#Write-Log -Message 'Unable to load COM Object [Microsoft.SMS.TSEnvironment]. Therefore, script is not currently running from a SCCM Task Sequence.' -Source $appDeployToolkitName
+	$runningTaskSequence = $false
+}
+
+If ($runningTaskSequence) {
+    ## Retrieve TS environment variables
+    ForEach ($TSVariable in $SMSTSEnvironment.GetVariables()) {
+        If ($TSVariable -match 'PSADT_(\w+)') {
+            $sections = $Matches[1] -split '_'
+
+            [string]$TSValue = $SMSTSEnvironment.Value($TSVariable)
+            ## Filter out PSADT_ variables
+            If ($TSValue -match '^\[(\w+)\](.+)') {
+                ## Format is [type]value where type is optional when value is of type string
+                [string]$TSVariableType = $Matches[1]
+                [string]$TSValue = $Matches[2].Trim()
+                ## Convert string to given type
+                Switch -wildcard ($TSVariableType) {
+                    "bool*" {
+                        Switch -regex ($TSValue) {
+                            '^(1|\$?true|yes|on|enabled)$' {
+                                 [bool]$TSValue = $true 
+                            }
+                            default { [bool]$TSValue = $false }
+                        }
+                        break
+                    }
+                    "int" { [int]$TSValue = [int]$TSValue; break }
+                    "long" { [long]$TSValue = [long]$TSValue; break }
+                    "decimal" { [decimal]$TSValue = [decimal]$TSValue; break }
+                    "single" { [single]$TSValue = [single]$TSValue; break }
+                    "double" { [double]$TSValue = [doublel]$TSValue; break }
+                    default { [string]$TSValue = $TSValue; break }
+                }
+            }
+
+            $parent = $SMSToolkitVariables
+            ForEach ($section in $sections[0..($sections.length - 2)]) {
+                If (-not $parent.ContainsKey($section)) {
+                    $parent[$section] = @{}
+                }
+                $parent = $parent[$section]
+            }
+            $parent[$sections[-1]] = $TSValue
+        }
+    }
+    #$out = $SMSToolkitVariables | Format-List | Out-String
+    #Write-Log -Message $out -Source $appDeployToolkitName
+}
+
 ## Variables: App Deploy Script Dependency Files
 [string]$appDeployLogoIcon = Join-Path -Path $scriptRoot -ChildPath 'AppDeployToolkitLogo.ico'
 [string]$appDeployLogoBanner = Join-Path -Path $scriptRoot -ChildPath 'AppDeployToolkitBanner.png'
 [string]$appDeployConfigFile = Join-Path -Path $scriptRoot -ChildPath 'AppDeployToolkitConfig.xml'
 [string]$appDeployCustomTypesSourceCode = Join-Path -Path $scriptRoot -ChildPath 'AppDeployToolkitMain.cs'
+
+If ($runningTaskSequence) {
+    ## Override the deploy script related variables, when present
+    If ($SMSToolkitVariables.ContainsKey('Deploy')) {
+        $SMS_Deploy = $SMSToolkitVariables.Deploy
+        If ($SMS_Deploy.ContainsKey('LogoIcon')) { $appDeployLogoIcon = Join-Path -Path $scriptRoot -ChildPath $SMS_Deploy.LogoIcon }
+        If ($SMS_Deploy.ContainsKey('LogoBanner')) { $appDeployLogoBanner = Join-Path -Path $scriptRoot -ChildPath $SMS_Deploy.LogoBanner }
+        If ($SMS_Deploy.ContainsKey('ConfigFile')) { $appDeployConfigFile = Join-Path -Path $scriptRoot -ChildPath $SMS_Deploy.ConfigFile }
+    }
+}
+
 #  App Deploy Optional Extensions File
 [string]$appDeployToolkitDotSourceExtensions = 'AppDeployToolkitExtensions.ps1'
 #  Check that dependency files are present
@@ -426,7 +497,6 @@ Else {
 [boolean]$msiRebootDetected = $false
 [boolean]$BlockExecution = $false
 [boolean]$installationStarted = $false
-[boolean]$runningTaskSequence = $false
 If (Test-Path -LiteralPath 'variable:welcomeTimer') { Remove-Variable -Name 'welcomeTimer' -Scope 'Script'}
 #  Reset the deferral history
 If (Test-Path -LiteralPath 'variable:deferHistory') { Remove-Variable -Name 'deferHistory' }
@@ -1063,6 +1133,9 @@ Function Exit-Script {
 	
 	## If Terminal Server mode was set, turn it off
 	If ($terminalServerMode) { Disable-TerminalServerInstallMode }
+
+    ## If running from within a task sequence, release the COM object
+    If ($runningTaskSequence) { Try { $null = [Runtime.Interopservices.Marshal]::ReleaseComObject($SMSTSEnvironment) } Catch {} }
 	
 	## Determine action based on exit code
 	Switch ($exitCode) {
@@ -10427,6 +10500,23 @@ If (-not ([Management.Automation.PSTypeName]'PSADT.UiAutomation').Type) {
 ## Disable logging until log file details are available
 . $DisableScriptLogging
 
+If ($runningTaskSequence) {
+    ## Override the PSADT application related variables, when present
+    If ($SMSToolkitVariables.ContainsKey('Application')) {
+        Write-Log -Message "Setting aplication variables based on task sequence" -Source $appDeployToolkitName
+        $SMS_Application = $SMSToolkitVariables.Application
+        If($SMS_Application.ContainsKey('Vendor')) { $appVendor = $SMS_Application.Vendor }
+        If($SMS_Application.ContainsKey('Name')) { $appName = $SMS_Application.Name }
+        If($SMS_Application.ContainsKey('Version')) { $appVersion = $SMS_Application.Version }
+        If($SMS_Application.ContainsKey('Arch')) { $appArch = $SMS_Application.Arch }
+        If($SMS_Application.ContainsKey('Lang')) { $appLang = $SMS_Application.Lang }
+        If($SMS_Application.ContainsKey('Revision')) { $appRevision = $SMS_Application.Revision }
+        If($SMS_Application.ContainsKey('ScriptVersion')) { $appScriptVersion = $SMS_Application.ScriptVersion }
+        If($SMS_Application.ContainsKey('ScriptDate')) { $appScriptDate = $SMS_Application.ScriptDate }
+        If($SMS_Application.ContainsKey('ScriptAuthor')) { $appScriptAuthor = $SMS_Application.ScriptAuthor }
+    }
+}
+
 ## If the default Deploy-Application.ps1 hasn't been modified, and the main script was not called by a referring script, check for MSI / MST and modify the install accordingly
 If ((-not $appName) -and (-not $ReferredInstallName)){
 	#  Find the first MSI file in the Files folder and use that as our install
@@ -10470,6 +10560,16 @@ If ((-not $appName) -and (-not $ReferredInstallName)){
 			$useDefaultMsi = $false ; $appVendor = '' ; $appName = '' ; $appVersion = ''
 		}
 	}
+}
+
+If ($runningTaskSequence) {
+    ## Override the PSADT install related variables, when present
+    If ($SMSToolkitVariables.ContainsKey('Install')) {
+        Write-Log -Message "Setting install variables based on task sequence" -Source $appDeployToolkitName
+        $SMS_Install = $SMSToolkitVariables.Install
+        If($SMS_Install.ContainsKey('Name')) { $installName = $SMS_Install.Name }
+        If($SMS_Install.ContainsKey('Title')) { $installTitle = $SMS_Install.Title }
+    }
 }
 
 ## Set up sample variables if Dot Sourcing the script, app details have not been specified, or InstallName not passed as parameter to the script
@@ -10732,19 +10832,6 @@ If ($UserDisplayScaleFactor) {
 Else {
 	Write-Log -Message "The system has a DPI scale factor of [$dpiScale] with DPI pixels [$dpiPixels]." -Source $appDeployToolkitName
 }
-
-## Check if script is running from a SCCM Task Sequence
-Try {
-	[__comobject]$SMSTSEnvironment = New-Object -ComObject 'Microsoft.SMS.TSEnvironment' -ErrorAction 'Stop'
-	Write-Log -Message 'Successfully loaded COM Object [Microsoft.SMS.TSEnvironment]. Therefore, script is currently running from a SCCM Task Sequence.' -Source $appDeployToolkitName
-	$null = [Runtime.Interopservices.Marshal]::ReleaseComObject($SMSTSEnvironment)
-	$runningTaskSequence = $true
-}
-Catch {
-	Write-Log -Message 'Unable to load COM Object [Microsoft.SMS.TSEnvironment]. Therefore, script is not currently running from a SCCM Task Sequence.' -Source $appDeployToolkitName
-	$runningTaskSequence = $false
-}
-
 
 ## Check to see if the Task Scheduler service is in a healthy state by checking its services to see if they exist, are currently running, and have a start mode of 'Automatic'.
 ## The task scheduler service and the services it is dependent on can/should only be started/stopped/modified when running in the SYSTEM context.

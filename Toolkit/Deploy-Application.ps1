@@ -116,8 +116,19 @@ Try {
 		##*===============================================
 		[string]$installPhase = 'Pre-Installation'
 
+        $WelcomeParams = @{}
+
+        If ($runningTaskSequence) {
+            If ($usersLoggedOn) { (New-Object -COMObject Microsoft.SMS.TSProgressUI).CloseProgressDialog() }
+
+            If ($SMSToolkitVariables.ContainsKey('Welcome')) {
+                $WelcomeParams = $SMSToolkitVariables.Welcome
+            }
+        }
+
 		## Show Welcome Message, close Internet Explorer if required, allow up to 3 deferrals, verify there is enough disk space to complete the install, and persist the prompt
-		Show-InstallationWelcome -CloseApps 'iexplore' -AllowDefer -DeferTimes 3 -CheckDiskSpace -PersistPrompt
+		#Show-InstallationWelcome -CloseApps 'iexplore' -AllowDefer -DeferTimes 3 -CheckDiskSpace -PersistPrompt
+        Show-InstallationWelcome @WelcomeParams
 		
 		## Show Progress Message (with the default message)
 		Show-InstallationProgress
