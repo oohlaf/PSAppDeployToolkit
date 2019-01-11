@@ -351,7 +351,7 @@ If ($runningTaskSequence) {
 [boolean]$configToolkitLogWriteToHost = [boolean]::Parse($xmlToolkitOptions.Toolkit_LogWriteToHost)
 [boolean]$configToolkitLogDebugMessage = [boolean]::Parse($xmlToolkitOptions.Toolkit_LogDebugMessage)
 If ($runningTaskSequence) {
-    ## Override the deploy script related variables, when present
+    ## Override the toolkit related variables, when present
     If ($SMSToolkitVariables.ContainsKey('Toolkit')) {
         $SMS_Toolkit = $SMSToolkitVariables.Toolkit
         If ($SMS_Toolkit.ContainsKey('RequireAdmin')) { [boolean]$configToolkitRequireAdmin = $SMS_Toolkit.RequireAdmin }
@@ -373,6 +373,18 @@ If ($runningTaskSequence) {
 [string]$configMSIUninstallParams = $ExecutionContext.InvokeCommand.ExpandString($xmlConfigMSIOptions.MSI_UninstallParams)
 [string]$configMSILogDir = $ExecutionContext.InvokeCommand.ExpandString($xmlConfigMSIOptions.MSI_LogPath)
 [int32]$configMSIMutexWaitTime = $xmlConfigMSIOptions.MSI_MutexWaitTime
+If ($runningTaskSequence) {
+    ## Override the MSI related variables, when present
+    If ($SMSToolkitVariables.ContainsKey('MSI')) {
+        $SMS_MSI = $SMSToolkitVariables.MSI
+        If ($SMS_MSI.ContainsKey('LoggingOptions')) { [string]$configMSILoggingOptions = $SMS_MSI.LoggingOptions }
+        If ($SMS_MSI.ContainsKey('InstalledParams')) { [string]$configMSIInstallParams = $ExecutionContext.InvokeCommand.ExpandString($SMS_MSI.InstallParams) }
+        If ($SMS_MSI.ContainsKey('SilentParams')) { [string]$configMSISilentParams = $ExecutionContext.InvokeCommand.ExpandString($SMS_MSI.SilentParams) }
+        If ($SMS_MSI.ContainsKey('UninstallParams')) { [string]$configMSIUninstallParams = $ExecutionContext.InvokeCommand.ExpandString($SMS_MSI.UninstallParams) }
+        If ($SMS_MSI.ContainsKey('LogPath')) { [string]$configMSILogDir = $ExecutionContext.InvokeCommand.ExpandString($SMS_MSI.LogPath) }
+        If ($SMS_MSI.ContainsKey('MutexWaitTime')) { [int32]$configMSIMutexWaitTime = $SMS_MSI.MutexWaitTime }
+    }
+}
 #  Get UI Options
 [Xml.XmlElement]$xmlConfigUIOptions = $xmlConfig.UI_Options
 [string]$configInstallationUILanguageOverride = $xmlConfigUIOptions.InstallationUI_LanguageOverride
