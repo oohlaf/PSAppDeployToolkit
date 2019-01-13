@@ -241,11 +241,82 @@ Else {
 	[string]$scriptParentPath = (Get-Item -LiteralPath $scriptRoot).Parent.FullName
 }
 
+## Check if script is running from a SCCM Task Sequence
+[boolean]$runningTaskSequence = $false
+[hashtable]$SMSToolkitVariables = @{}
+Try {
+    # The SMSTSEnvironment object is released in the function Exit-Script
+	[__comobject]$SMSTSEnvironment = New-Object -ComObject 'Microsoft.SMS.TSEnvironment' -ErrorAction 'Stop'
+	#Write-Log -Message 'Successfully loaded COM Object [Microsoft.SMS.TSEnvironment]. Therefore, script is currently running from a SCCM Task Sequence.' -Source $appDeployToolkitName
+	$runningTaskSequence = $true
+}
+Catch {
+	#Write-Log -Message 'Unable to load COM Object [Microsoft.SMS.TSEnvironment]. Therefore, script is not currently running from a SCCM Task Sequence.' -Source $appDeployToolkitName
+	$runningTaskSequence = $false
+}
+
+If ($runningTaskSequence) {
+    ## Retrieve TS environment variables
+    ForEach ($TSVariable in $SMSTSEnvironment.GetVariables()) {
+        If ($TSVariable -match 'PSADT_(\w+)') {
+            $sections = $Matches[1] -split '_'
+
+            [string]$TSValue = $SMSTSEnvironment.Value($TSVariable)
+            ## Filter out PSADT_ variables
+            If ($TSValue -match '^\[(\w+)\](.+)') {
+                ## Format is [type]value where type is optional when value is of type string
+                [string]$TSVariableType = $Matches[1]
+                [string]$TSValue = $Matches[2].Trim()
+                ## Convert string to given type
+                Switch -wildcard ($TSVariableType) {
+                    "bool*" {
+                        Switch -regex ($TSValue) {
+                            '^(1|\$?true|yes|on|enabled)$' {
+                                 [bool]$TSValue = $true
+                            }
+                            default { [bool]$TSValue = $false }
+                        }
+                        break
+                    }
+                    "int" { [int]$TSValue = [int]$TSValue; break }
+                    "int32" { [int32]$TSValue = [int32]$TSValue; break }
+                    "long" { [long]$TSValue = [long]$TSValue; break }
+                    "decimal" { [decimal]$TSValue = [decimal]$TSValue; break }
+                    "single" { [single]$TSValue = [single]$TSValue; break }
+                    "double" { [double]$TSValue = [doublel]$TSValue; break }
+                    "version" { [version]$TSValue = [version]$TSValue; break }
+                    default { [string]$TSValue = $TSValue; break }
+                }
+            }
+
+            $parent = $SMSToolkitVariables
+            ForEach ($section in $sections[0..($sections.length - 2)]) {
+                If (-not $parent.ContainsKey($section)) {
+                    $parent[$section] = @{}
+                }
+                $parent = $parent[$section]
+            }
+            $parent[$sections[-1]] = $TSValue
+        }
+    }
+}
+
 ## Variables: App Deploy Script Dependency Files
 [string]$appDeployLogoIcon = Join-Path -Path $scriptRoot -ChildPath 'AppDeployToolkitLogo.ico'
 [string]$appDeployLogoBanner = Join-Path -Path $scriptRoot -ChildPath 'AppDeployToolkitBanner.png'
 [string]$appDeployConfigFile = Join-Path -Path $scriptRoot -ChildPath 'AppDeployToolkitConfig.xml'
 [string]$appDeployCustomTypesSourceCode = Join-Path -Path $scriptRoot -ChildPath 'AppDeployToolkitMain.cs'
+
+If ($runningTaskSequence) {
+    ## Override the deploy script related variables, when present
+    If ($SMSToolkitVariables.ContainsKey('Deploy')) {
+        $SMS_Deploy = $SMSToolkitVariables.Deploy
+        If ($SMS_Deploy.ContainsKey('LogoIcon')) { $appDeployLogoIcon = Join-Path -Path $scriptRoot -ChildPath $SMS_Deploy.LogoIcon }
+        If ($SMS_Deploy.ContainsKey('LogoBanner')) { $appDeployLogoBanner = Join-Path -Path $scriptRoot -ChildPath $SMS_Deploy.LogoBanner }
+        If ($SMS_Deploy.ContainsKey('ConfigFile')) { $appDeployConfigFile = Join-Path -Path $scriptRoot -ChildPath $SMS_Deploy.ConfigFile }
+    }
+}
+
 #  App Deploy Optional Extensions File
 [string]$appDeployToolkitDotSourceExtensions = 'AppDeployToolkitExtensions.ps1'
 #  Check that dependency files are present
@@ -261,6 +332,14 @@ If (-not (Test-Path -LiteralPath $appDeployCustomTypesSourceCode -PathType 'Leaf
 [Xml.XmlElement]$configConfigDetails = $xmlConfig.Config_File
 [string]$configConfigVersion = [version]$configConfigDetails.Config_Version
 [string]$configConfigDate = $configConfigDetails.Config_Date
+If ($runningTaskSequence) {
+    ## Override the deploy script related variables, when present
+    If ($SMSToolkitVariables.ContainsKey('Config')) {
+        $SMS_Config = $SMSToolkitVariables.Config
+        If ($SMS_Config.ContainsKey('Version')) { [string]$configConfigVersion = $SMS_Config.Version }
+        If ($SMS_Config.ContainsKey('Date')) { [string]$configConfigDate = $SMS_Config.Date }
+    }
+}
 #  Get Toolkit Options
 [Xml.XmlElement]$xmlToolkitOptions = $xmlConfig.Toolkit_Options
 [boolean]$configToolkitRequireAdmin = [boolean]::Parse($xmlToolkitOptions.Toolkit_RequireAdmin)
@@ -272,6 +351,21 @@ If (-not (Test-Path -LiteralPath $appDeployCustomTypesSourceCode -PathType 'Leaf
 [double]$configToolkitLogMaxSize = $xmlToolkitOptions.Toolkit_LogMaxSize
 [boolean]$configToolkitLogWriteToHost = [boolean]::Parse($xmlToolkitOptions.Toolkit_LogWriteToHost)
 [boolean]$configToolkitLogDebugMessage = [boolean]::Parse($xmlToolkitOptions.Toolkit_LogDebugMessage)
+If ($runningTaskSequence) {
+    ## Override the toolkit options related variables, when present
+    If ($SMSToolkitVariables.ContainsKey('Toolkit')) {
+        $SMS_Toolkit = $SMSToolkitVariables.Toolkit
+        If ($SMS_Toolkit.ContainsKey('RequireAdmin')) { [boolean]$configToolkitRequireAdmin = $SMS_Toolkit.RequireAdmin }
+        If ($SMS_Toolkit.ContainsKey('TempPath')) { [string]$configToolkitTempPath = $ExecutionContext.InvokeCommand.ExpandString($SMS_Toolkit.TempPath) }
+        If ($SMS_Toolkit.ContainsKey('RegPath')) { [string]$configToolkitRegPath = $SMS_Toolkit.RegPath }
+        If ($SMS_Toolkit.ContainsKey('LogPath')) { [string]$configToolkitLogDir = $ExecutionContext.InvokeCommand.ExpandString($SMS_Toolkit.LogPath) }
+        If ($SMS_Toolkit.ContainsKey('CompressLogs')) { [boolean]$configToolkitCompressLogs = $SMS_Toolkit.CompressLogs }
+        If ($SMS_Toolkit.ContainsKey('LogStyle')) { [string]$configToolkitLogStyle = $SMS_Toolkit.LogStyle }
+        If ($SMS_Toolkit.ContainsKey('LogMaxSize')) { [double]$configToolkitLogMaxSize = $SMS_Toolkit.LogMaxSize }
+        If ($SMS_Toolkit.ContainsKey('LogWriteToHost')) { [boolean]$configToolkitLogWriteToHost = $SMS_Toolkit.LogWriteToHost }
+        If ($SMS_Toolkit.ContainsKey('LogDebugMessage')) { [boolean]$configToolkitLogDebugMessage = $SMS_Toolkit.LogDebugMessage }
+    }
+}
 #  Get MSI Options
 [Xml.XmlElement]$xmlConfigMSIOptions = $xmlConfig.MSI_Options
 [string]$configMSILoggingOptions = $xmlConfigMSIOptions.MSI_LoggingOptions
@@ -280,6 +374,18 @@ If (-not (Test-Path -LiteralPath $appDeployCustomTypesSourceCode -PathType 'Leaf
 [string]$configMSIUninstallParams = $ExecutionContext.InvokeCommand.ExpandString($xmlConfigMSIOptions.MSI_UninstallParams)
 [string]$configMSILogDir = $ExecutionContext.InvokeCommand.ExpandString($xmlConfigMSIOptions.MSI_LogPath)
 [int32]$configMSIMutexWaitTime = $xmlConfigMSIOptions.MSI_MutexWaitTime
+If ($runningTaskSequence) {
+    ## Override the MSI options related variables, when present
+    If ($SMSToolkitVariables.ContainsKey('MSI')) {
+        $SMS_MSI = $SMSToolkitVariables.MSI
+        If ($SMS_MSI.ContainsKey('LoggingOptions')) { [string]$configMSILoggingOptions = $SMS_MSI.LoggingOptions }
+        If ($SMS_MSI.ContainsKey('InstalledParams')) { [string]$configMSIInstallParams = $ExecutionContext.InvokeCommand.ExpandString($SMS_MSI.InstallParams) }
+        If ($SMS_MSI.ContainsKey('SilentParams')) { [string]$configMSISilentParams = $ExecutionContext.InvokeCommand.ExpandString($SMS_MSI.SilentParams) }
+        If ($SMS_MSI.ContainsKey('UninstallParams')) { [string]$configMSIUninstallParams = $ExecutionContext.InvokeCommand.ExpandString($SMS_MSI.UninstallParams) }
+        If ($SMS_MSI.ContainsKey('LogPath')) { [string]$configMSILogDir = $ExecutionContext.InvokeCommand.ExpandString($SMS_MSI.LogPath) }
+        If ($SMS_MSI.ContainsKey('MutexWaitTime')) { [int32]$configMSIMutexWaitTime = $SMS_MSI.MutexWaitTime }
+    }
+}
 #  Get UI Options
 [Xml.XmlElement]$xmlConfigUIOptions = $xmlConfig.UI_Options
 [string]$configInstallationUILanguageOverride = $xmlConfigUIOptions.InstallationUI_LanguageOverride
@@ -292,6 +398,22 @@ If (-not (Test-Path -LiteralPath $appDeployCustomTypesSourceCode -PathType 'Leaf
 [int32]$configInstallationPromptToSave = $xmlConfigUIOptions.InstallationPromptToSave_Timeout
 [boolean]$configInstallationWelcomePromptDynamicRunningProcessEvaluation = [boolean]::Parse($xmlConfigUIOptions.InstallationWelcomePrompt_DynamicRunningProcessEvaluation)
 [int32]$configInstallationWelcomePromptDynamicRunningProcessEvaluationInterval = $xmlConfigUIOptions.InstallationWelcomePrompt_DynamicRunningProcessEvaluationInterval
+If ($runningTaskSequence) {
+    ## Override the UI options related variables, when present
+    If ($SMSToolkitVariables.ContainsKey('UI')) {
+        $SMS_UI = $SMSToolkitVariables.UI
+        If ($SMS_UI.ContainsKey('LanguageOverride')) { [string]$configInstallationUILanguageOverride = $SMS_UI.LanguageOverride }
+        If ($SMS_UI.ContainsKey('ShowBalloonNotifications')) { [boolean]$configShowBalloonNotifications = $SMS_UI.ShowBalloonNotifications }
+        If ($SMS_UI.ContainsKey('Timeout')) { [int32]$configInstallationUITimeout = $SMS_UI.Timeout }
+        If ($SMS_UI.ContainsKey('ExitCode')) { [int32]$configInstallationUIExitCode = $SMS_UI.ExitCode }
+        If ($SMS_UI.ContainsKey('DeferExitCode')) { [int32]$configInstallationDeferExitCode = $SMS_UI.DeferExitCode }
+        If ($SMS_UI.ContainsKey('PersistInterval')) { [int32]$configInstallationPersistInterval = $SMS_UI.PersistInterval }
+        If ($SMS_UI.ContainsKey('RestartPersistInterval')) { [int32]$configInstallationRestartPersistInterval = $SMS_UI.RestartPersistInterval }
+        If ($SMS_UI.ContainsKey('PromptToSaveTimeout')) { [int32]$configInstallationPromptToSave = $SMS_UI.PromptToSaveTimeout }
+        If ($SMS_UI.ContainsKey('DynamicRunningProcessEvaluation')) { [boolean]$configInstallationWelcomePromptDynamicRunningProcessEvaluation = $SMS_UI.DynamicRunningProcessEvaluation }
+        If ($SMS_UI.ContainsKey('DynamicRunningProcessEvaluationInterval')) { [int32]$configInstallationWelcomePromptDynamicRunningProcessEvaluationInterval = $SMS_UI.DynamicRunningProcessEvaluationInterval }
+    }
+}
 #  Define ScriptBlock for Loading Message UI Language Options (default for English if no localization found)
 [scriptblock]$xmlLoadLocalizedUIMessages = {
 	#  If a user is logged on, then get primary UI language for logged on user (even if running in session 0)
@@ -389,6 +511,77 @@ If (-not (Test-Path -LiteralPath $appDeployCustomTypesSourceCode -PathType 'Leaf
 	[string]$configRestartPromptButtonRestartNow = $xmlUIMessages.RestartPrompt_ButtonRestartNow
 	[string]$configWelcomePromptCountdownMessage = $xmlUIMessages.WelcomePrompt_CountdownMessage
 	[string]$configWelcomePromptCustomMessage = $xmlUIMessages.WelcomePrompt_CustomMessage
+
+    If ($runningTaskSequence) {
+        ## Override the UI messages related variables, when present
+        If ($SMSToolkitVariables.ContainsKey('Messages')) {
+            ## Determine the active language
+            $SMS_Messages = $SMSToolkitVariables.Messages
+            If ($configInstallationUILanguageOverride -and $SMS_Messages.ContainsKey($configInstallationUILanguageOverride)) {
+                $SMS_Messages = $SMS_Messages[$configInstallationUILanguageOverride]
+            }
+            ElseIf ($HKUPrimaryLanguageShort -and $SMS_Messages.ContainsKey($HKUPrimaryLanguageShort)) {
+                $SMS_Messages = $SMS_Messages[$HKUPrimaryLanguageShort]
+            }
+            ElseIf ($currentLanguage -and $SMS_Messages.ContainsKey($currentLanguage)) {
+                $SMS_Messages = $SMS_Messages[$currentLanguage]
+            }
+            ElseIf ($SMS_Messages.ContainsKey('EN')) {
+                $SMS_Messages = $SMS_Messages.EN
+            }
+            ## Select the messages based on the active language
+            If ($SMS_Messages.ContainsKey('DiskSpace')) {
+                If ($SMS_Messages.DiskSpace.ContainsKey('Message')) { [string]$configDiskSpaceMessage = $SMS_Messages.DiskSpace.Message }
+            }
+            If ($SMS_Messages.ContainsKey('ClosePrompt')) {
+                If ($SMS_Messages.ClosePrompt.ContainsKey('ButtonContinue')) { [string]$configClosePromptButtonContinue = $SMS_Messages.ClosePrompt.ButtonContinue }
+                If ($SMS_Messages.ClosePrompt.ContainsKey('ButtonContinueTooltip')) { [string]$configClosePromptButtonContinueTooltip = $SMS_Messages.ClosePrompt.ButtonContinueTooltip }
+                If ($SMS_Messages.ClosePrompt.ContainsKey('ButtonClose')) { [string]$configClosePromptButtonClose = $SMS_Messages.ClosePrompt.ButtonClose }
+                If ($SMS_Messages.ClosePrompt.ContainsKey('ButtonDefer')) { [string]$configClosePromptButtonDefer = $SMS_Messages.ClosePrompt.ButtonDefer }
+                If ($SMS_Messages.ClosePrompt.ContainsKey('Message')) { [string]$configClosePromptMessage = $SMS_Messages.ClosePrompt.Message }
+                If ($SMS_Messages.ClosePrompt.ContainsKey('CountdownMessage')) { [string]$configClosePromptCountdownMessage = $SMS_Messages.ClosePrompt.CountdownMessage }
+                If ($SMS_Messages.ClosePrompt.ContainsKey('Message')) { [string]$configClosePromptCountdownMessage = $SMS_Messages.ClosePrompt.Message }
+            }
+            If ($SMS_Messages.ContainsKey('DeferPrompt')) {
+                If ($SMS_Messages.DeferPrompt.ContainsKey('WelcomeMessage')) { [string]$configDeferPromptWelcomeMessage = $SMS_Messages.DeferPrompt.WelcomeMessage }
+                If ($SMS_Messages.DeferPrompt.ContainsKey('ExpiryMessage')) { [string]$configDeferPromptExpiryMessage = $SMS_Messages.DeferPrompt.ExpiryMessage }
+                If ($SMS_Messages.DeferPrompt.ContainsKey('WarningMessage')) { [string]$configDeferPromptWarningMessage = $SMS_Messages.DeferPrompt.WarningMessage }
+                If ($SMS_Messages.DeferPrompt.ContainsKey('RemainingDeferrals')) { [string]$configDeferPromptRemainingDeferrals = $SMS_Messages.DeferPrompt.RemainingDeferrals }
+                If ($SMS_Messages.DeferPrompt.ContainsKey('Deadline')) { [string]$configDeferPromptDeadline = $SMS_Messages.DeferPrompt.Deadline }
+            }
+            If ($SMS_Messages.ContainsKey('WelcomePrompt')) {
+                If ($SMS_Messages.WelcomePrompt.ContainsKey('CountdownMessage')) { [string]$configWelcomePromptCountdownMessage = $SMS_Messages.WelcomePrompt.CountdownMessage }
+                If ($SMS_Messages.WelcomePrompt.ContainsKey('CustomMessage')) { [string]$configWelcomePromptCustomMessage = $SMS_Messages.WelcomePrompt.CustomMessage }
+            }
+            If ($SMS_Messages.ContainsKey('DeploymentType')) {
+                If ($SMS_Messages.DeploymentType.ContainsKey('Install')) { [string]$configDeploymentTypeInstall = $SMS_Messages.DeploymentType.Install }
+                If ($SMS_Messages.DeploymentType.ContainsKey('Uninstall')) { [string]$configDeploymentTypeUnInstall = $SMS_Messages.DeploymentType.Uninstall }
+            }
+            If ($SMS_Messages.ContainsKey('BalloonText')) {
+                If ($SMS_Messages.BalloonText.ContainsKey('Start')) { [string]$configBalloonTextStart = $SMS_Messages.BalloonText.Start }
+                If ($SMS_Messages.BalloonText.ContainsKey('Complete')) { [string]$configBalloonTextComplete = $SMS_Messages.BalloonText.Complete }
+                If ($SMS_Messages.BalloonText.ContainsKey('RestartRequired')) { [string]$configBalloonTextRestartRequired = $SMS_Messages.BalloonText.RestartRequired }
+                If ($SMS_Messages.BalloonText.ContainsKey('Error')) { [string]$configBalloonTextError = $SMS_Messages.BalloonText.Error }
+                If ($SMS_Messages.BalloonText.ContainsKey('FastRetry')) { [string]$configBalloonTextFastRetry = $SMS_Messages.BalloonText.FastRetry }
+            }
+            If ($SMS_Messages.ContainsKey('Progress')) {
+                If ($SMS_Messages.Progress.ContainsKey('MessageInstall')) { [string]$configProgressMessageInstall = $SMS_Messages.Progress.MessageInstall }
+                If ($SMS_Messages.Progress.ContainsKey('MessageUninstall')) { [string]$configProgressMessageUninstall = $SMS_Messages.Progress.MessageUninstall }
+            }
+            If ($SMS_Messages.ContainsKey('BlockExecution')) {
+                If ($SMS_Messages.BlockExecution.ContainsKey('Message')) { [string]$configBlockExecutionMessage = $SMS_Messages.BlockExecution.Message }
+            }
+            If ($SMS_Messages.ContainsKey('RestartPrompt')) {
+                If ($SMS_Messages.RestartPrompt.ContainsKey('Title')) { [string]$configRestartPromptTitle = $SMS_Messages.RestartPrompt.Title }
+                If ($SMS_Messages.RestartPrompt.ContainsKey('Message')) { [string]$configRestartPromptMessage = $SMS_Messages.RestartPrompt.Message }
+                If ($SMS_Messages.RestartPrompt.ContainsKey('MessageTime')) { [string]$configRestartPromptMessageTime = $SMS_Messages.RestartPrompt.MessageTime }
+                If ($SMS_Messages.RestartPrompt.ContainsKey('MessageRestart')) { [string]$configRestartPromptMessageRestart = $SMS_Messages.RestartPrompt.MessageRestart }
+                If ($SMS_Messages.RestartPrompt.ContainsKey('TimeRemaining')) { [string]$configRestartPromptTimeRemaining = $SMS_Messages.RestartPrompt.TimeRemaining }
+                If ($SMS_Messages.RestartPrompt.ContainsKey('ButtonRestartLater')) { [string]$configRestartPromptButtonRestartLater = $SMS_Messages.RestartPrompt.ButtonRestartLater }
+                If ($SMS_Messages.RestartPrompt.ContainsKey('ButtonRestartNow')) { [string]$configRestartPromptButtonRestartNow = $SMS_Messages.RestartPrompt.ButtonRestartNow }
+            }
+        }
+    }
 }
 
 ## Variables: Script Directories
@@ -426,7 +619,6 @@ Else {
 [boolean]$msiRebootDetected = $false
 [boolean]$BlockExecution = $false
 [boolean]$installationStarted = $false
-[boolean]$runningTaskSequence = $false
 If (Test-Path -LiteralPath 'variable:welcomeTimer') { Remove-Variable -Name 'welcomeTimer' -Scope 'Script'}
 #  Reset the deferral history
 If (Test-Path -LiteralPath 'variable:deferHistory') { Remove-Variable -Name 'deferHistory' }
@@ -1063,6 +1255,9 @@ Function Exit-Script {
 
 	## If Terminal Server mode was set, turn it off
 	If ($terminalServerMode) { Disable-TerminalServerInstallMode }
+
+    ## If running from within a task sequence, release the COM object
+    If ($runningTaskSequence) { Try { $null = [Runtime.Interopservices.Marshal]::ReleaseComObject($SMSTSEnvironment) } Catch {} }
 
 	## Determine action based on exit code
 	Switch ($exitCode) {
@@ -10431,6 +10626,23 @@ If (-not ([Management.Automation.PSTypeName]'PSADT.UiAutomation').Type) {
 ## Disable logging until log file details are available
 . $DisableScriptLogging
 
+If ($runningTaskSequence) {
+    ## Override the PSADT application related variables, when present
+    If ($SMSToolkitVariables.ContainsKey('Application')) {
+        Write-Log -Message "Setting aplication variables based on task sequence" -Source $appDeployToolkitName
+        $SMS_Application = $SMSToolkitVariables.Application
+        If($SMS_Application.ContainsKey('Vendor')) { $appVendor = $SMS_Application.Vendor }
+        If($SMS_Application.ContainsKey('Name')) { $appName = $SMS_Application.Name }
+        If($SMS_Application.ContainsKey('Version')) { $appVersion = $SMS_Application.Version }
+        If($SMS_Application.ContainsKey('Arch')) { $appArch = $SMS_Application.Arch }
+        If($SMS_Application.ContainsKey('Lang')) { $appLang = $SMS_Application.Lang }
+        If($SMS_Application.ContainsKey('Revision')) { $appRevision = $SMS_Application.Revision }
+        If($SMS_Application.ContainsKey('ScriptVersion')) { $appScriptVersion = $SMS_Application.ScriptVersion }
+        If($SMS_Application.ContainsKey('ScriptDate')) { $appScriptDate = $SMS_Application.ScriptDate }
+        If($SMS_Application.ContainsKey('ScriptAuthor')) { $appScriptAuthor = $SMS_Application.ScriptAuthor }
+    }
+}
+
 ## If the default Deploy-Application.ps1 hasn't been modified, and the main script was not called by a referring script, check for MSI / MST and modify the install accordingly
 If ((-not $appName) -and (-not $ReferredInstallName)){
 	#  Find the first MSI file in the Files folder and use that as our install
@@ -10474,6 +10686,16 @@ If ((-not $appName) -and (-not $ReferredInstallName)){
 			$useDefaultMsi = $false ; $appVendor = '' ; $appName = '' ; $appVersion = ''
 		}
 	}
+}
+
+If ($runningTaskSequence) {
+    ## Override the PSADT install related variables, when present
+    If ($SMSToolkitVariables.ContainsKey('Install')) {
+        Write-Log -Message "Setting install variables based on task sequence" -Source $appDeployToolkitName
+        $SMS_Install = $SMSToolkitVariables.Install
+        If($SMS_Install.ContainsKey('Name')) { $installName = $SMS_Install.Name }
+        If($SMS_Install.ContainsKey('Title')) { $installTitle = $SMS_Install.Title }
+    }
 }
 
 ## Set up sample variables if Dot Sourcing the script, app details have not been specified, or InstallName not passed as parameter to the script
@@ -10736,19 +10958,6 @@ If ($UserDisplayScaleFactor) {
 Else {
 	Write-Log -Message "The system has a DPI scale factor of [$dpiScale] with DPI pixels [$dpiPixels]." -Source $appDeployToolkitName
 }
-
-## Check if script is running from a SCCM Task Sequence
-Try {
-	[__comobject]$SMSTSEnvironment = New-Object -ComObject 'Microsoft.SMS.TSEnvironment' -ErrorAction 'Stop'
-	Write-Log -Message 'Successfully loaded COM Object [Microsoft.SMS.TSEnvironment]. Therefore, script is currently running from a SCCM Task Sequence.' -Source $appDeployToolkitName
-	$null = [Runtime.Interopservices.Marshal]::ReleaseComObject($SMSTSEnvironment)
-	$runningTaskSequence = $true
-}
-Catch {
-	Write-Log -Message 'Unable to load COM Object [Microsoft.SMS.TSEnvironment]. Therefore, script is not currently running from a SCCM Task Sequence.' -Source $appDeployToolkitName
-	$runningTaskSequence = $false
-}
-
 
 ## Check to see if the Task Scheduler service is in a healthy state by checking its services to see if they exist, are currently running, and have a start mode of 'Automatic'.
 ## The task scheduler service and the services it is dependent on can/should only be started/stopped/modified when running in the SYSTEM context.
