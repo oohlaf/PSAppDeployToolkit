@@ -117,10 +117,17 @@ Try {
 		[string]$installPhase = 'Pre-Installation'
 
         $WelcomeParams = @{}
-
         If ($runningTaskSequence) {
-            If ($usersLoggedOn) { (New-Object -COMObject Microsoft.SMS.TSProgressUI).CloseProgressDialog() }
-
+            If ($usersLoggedOn) {
+                Try {
+                    $TSProgressUI = New-Object -COMObject Microsoft.SMS.TSProgressUI
+                    $TSProgressUI.CloseProgressDialog()
+                }
+                Catch {
+                    [string]$mainErrorMessage = "$(Resolve-Error)"
+                    Write-Log -Message "Failed to create COM object for TSProgressUI: `n$mainErrorMessage" -Severity 3 -Source $deployAppScriptFriendlyName
+                }
+            }
             If ($SMSToolkitVariables.ContainsKey('Welcome')) {
                 $WelcomeParams = $SMSToolkitVariables.Welcome
             }
