@@ -511,6 +511,77 @@ If ($runningTaskSequence) {
 	[string]$configRestartPromptButtonRestartNow = $xmlUIMessages.RestartPrompt_ButtonRestartNow
 	[string]$configWelcomePromptCountdownMessage = $xmlUIMessages.WelcomePrompt_CountdownMessage
 	[string]$configWelcomePromptCustomMessage = $xmlUIMessages.WelcomePrompt_CustomMessage
+
+    If ($runningTaskSequence) {
+        ## Override the UI messages related variables, when present
+        If ($SMSToolkitVariables.ContainsKey('Messages')) {
+            ## Determine the active language
+            $SMS_Messages = $SMSToolkitVariables.Messages
+            If ($configInstallationUILanguageOverride -and $SMS_Messages.ContainsKey($configInstallationUILanguageOverride)) {
+                $SMS_Messages = $SMS_Messages[$configInstallationUILanguageOverride]
+            }
+            ElseIf ($HKUPrimaryLanguageShort -and $SMS_Messages.ContainsKey($HKUPrimaryLanguageShort)) {
+                $SMS_Messages = $SMS_Messages[$HKUPrimaryLanguageShort]
+            }
+            ElseIf ($currentLanguage -and $SMS_Messages.ContainsKey($currentLanguage)) {
+                $SMS_Messages = $SMS_Messages[$currentLanguage]
+            }
+            ElseIf ($SMS_Messages.ContainsKey('EN')) {
+                $SMS_Messages = $SMS_Messages.EN
+            }
+            ## Select the messages based on the active language
+            If ($SMS_Messages.ContainsKey('DiskSpace')) {
+                If ($SMS_Messages.DiskSpace.ContainsKey('Message')) { [string]$configDiskSpaceMessage = $SMS_Messages.DiskSpace.Message }
+            }
+            If ($SMS_Messages.ContainsKey('ClosePrompt')) {
+                If ($SMS_Messages.ClosePrompt.ContainsKey('ButtonContinue')) { [string]$configClosePromptButtonContinue = $SMS_Messages.ClosePrompt.ButtonContinue }
+                If ($SMS_Messages.ClosePrompt.ContainsKey('ButtonContinueTooltip')) { [string]$configClosePromptButtonContinueTooltip = $SMS_Messages.ClosePrompt.ButtonContinueTooltip }
+                If ($SMS_Messages.ClosePrompt.ContainsKey('ButtonClose')) { [string]$configClosePromptButtonClose = $SMS_Messages.ClosePrompt.ButtonClose }
+                If ($SMS_Messages.ClosePrompt.ContainsKey('ButtonDefer')) { [string]$configClosePromptButtonDefer = $SMS_Messages.ClosePrompt.ButtonDefer }
+                If ($SMS_Messages.ClosePrompt.ContainsKey('Message')) { [string]$configClosePromptMessage = $SMS_Messages.ClosePrompt.Message }
+                If ($SMS_Messages.ClosePrompt.ContainsKey('CountdownMessage')) { [string]$configClosePromptCountdownMessage = $SMS_Messages.ClosePrompt.CountdownMessage }
+                If ($SMS_Messages.ClosePrompt.ContainsKey('Message')) { [string]$configClosePromptCountdownMessage = $SMS_Messages.ClosePrompt.Message }
+            }
+            If ($SMS_Messages.ContainsKey('DeferPrompt')) {
+                If ($SMS_Messages.DeferPrompt.ContainsKey('WelcomeMessage')) { [string]$configDeferPromptWelcomeMessage = $SMS_Messages.DeferPrompt.WelcomeMessage }
+                If ($SMS_Messages.DeferPrompt.ContainsKey('ExpiryMessage')) { [string]$configDeferPromptExpiryMessage = $SMS_Messages.DeferPrompt.ExpiryMessage }
+                If ($SMS_Messages.DeferPrompt.ContainsKey('WarningMessage')) { [string]$configDeferPromptWarningMessage = $SMS_Messages.DeferPrompt.WarningMessage }
+                If ($SMS_Messages.DeferPrompt.ContainsKey('RemainingDeferrals')) { [string]$configDeferPromptRemainingDeferrals = $SMS_Messages.DeferPrompt.RemainingDeferrals }
+                If ($SMS_Messages.DeferPrompt.ContainsKey('Deadline')) { [string]$configDeferPromptDeadline = $SMS_Messages.DeferPrompt.Deadline }
+            }
+            If ($SMS_Messages.ContainsKey('WelcomePrompt')) {
+                If ($SMS_Messages.WelcomePrompt.ContainsKey('CountdownMessage')) { [string]$configWelcomePromptCountdownMessage = $SMS_Messages.WelcomePrompt.CountdownMessage }
+                If ($SMS_Messages.WelcomePrompt.ContainsKey('CustomMessage')) { [string]$configWelcomePromptCustomMessage = $SMS_Messages.WelcomePrompt.CustomMessage }
+            }
+            If ($SMS_Messages.ContainsKey('DeploymentType')) {
+                If ($SMS_Messages.DeploymentType.ContainsKey('Install')) { [string]$configDeploymentTypeInstall = $SMS_Messages.DeploymentType.Install }
+                If ($SMS_Messages.DeploymentType.ContainsKey('Uninstall')) { [string]$configDeploymentTypeUnInstall = $SMS_Messages.DeploymentType.Uninstall }
+            }
+            If ($SMS_Messages.ContainsKey('BalloonText')) {
+                If ($SMS_Messages.BalloonText.ContainsKey('Start')) { [string]$configBalloonTextStart = $SMS_Messages.BalloonText.Start }
+                If ($SMS_Messages.BalloonText.ContainsKey('Complete')) { [string]$configBalloonTextComplete = $SMS_Messages.BalloonText.Complete }
+                If ($SMS_Messages.BalloonText.ContainsKey('RestartRequired')) { [string]$configBalloonTextRestartRequired = $SMS_Messages.BalloonText.RestartRequired }
+                If ($SMS_Messages.BalloonText.ContainsKey('Error')) { [string]$configBalloonTextError = $SMS_Messages.BalloonText.Error }
+                If ($SMS_Messages.BalloonText.ContainsKey('FastRetry')) { [string]$configBalloonTextFastRetry = $SMS_Messages.BalloonText.FastRetry }
+            }
+            If ($SMS_Messages.ContainsKey('Progress')) {
+                If ($SMS_Messages.Progress.ContainsKey('MessageInstall')) { [string]$configProgressMessageInstall = $SMS_Messages.Progress.MessageInstall }
+                If ($SMS_Messages.Progress.ContainsKey('MessageUninstall')) { [string]$configProgressMessageUninstall = $SMS_Messages.Progress.MessageUninstall }
+            }
+            If ($SMS_Messages.ContainsKey('BlockExecution')) {
+                If ($SMS_Messages.BlockExecution.ContainsKey('Message')) { [string]$configBlockExecutionMessage = $SMS_Messages.BlockExecution.Message }
+            }
+            If ($SMS_Messages.ContainsKey('RestartPrompt')) {
+                If ($SMS_Messages.RestartPrompt.ContainsKey('Title')) { [string]$configRestartPromptTitle = $SMS_Messages.RestartPrompt.Title }
+                If ($SMS_Messages.RestartPrompt.ContainsKey('Message')) { [string]$configRestartPromptMessage = $SMS_Messages.RestartPrompt.Message }
+                If ($SMS_Messages.RestartPrompt.ContainsKey('MessageTime')) { [string]$configRestartPromptMessageTime = $SMS_Messages.RestartPrompt.MessageTime }
+                If ($SMS_Messages.RestartPrompt.ContainsKey('MessageRestart')) { [string]$configRestartPromptMessageRestart = $SMS_Messages.RestartPrompt.MessageRestart }
+                If ($SMS_Messages.RestartPrompt.ContainsKey('TimeRemaining')) { [string]$configRestartPromptTimeRemaining = $SMS_Messages.RestartPrompt.TimeRemaining }
+                If ($SMS_Messages.RestartPrompt.ContainsKey('ButtonRestartLater')) { [string]$configRestartPromptButtonRestartLater = $SMS_Messages.RestartPrompt.ButtonRestartLater }
+                If ($SMS_Messages.RestartPrompt.ContainsKey('ButtonRestartNow')) { [string]$configRestartPromptButtonRestartNow = $SMS_Messages.RestartPrompt.ButtonRestartNow }
+            }
+        }
+    }
 }
 
 ## Variables: Script Directories
