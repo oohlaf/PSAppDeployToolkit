@@ -279,6 +279,7 @@ If ($runningTaskSequence) {
                         break
                     }
                     "int" { [int]$TSValue = [int]$TSValue; break }
+                    "int32" { [int32]$TSValue = [int32]$TSValue; break }
                     "long" { [long]$TSValue = [long]$TSValue; break }
                     "decimal" { [decimal]$TSValue = [decimal]$TSValue; break }
                     "single" { [single]$TSValue = [single]$TSValue; break }
