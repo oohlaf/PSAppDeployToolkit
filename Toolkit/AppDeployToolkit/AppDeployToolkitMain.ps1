@@ -285,8 +285,10 @@ If ($runningTaskSequence) {
                     "single" { [single]$TSValue = [single]$TSValue; break }
                     "double" { [double]$TSValue = [doublel]$TSValue; break }
                     "version" { [version]$TSValue = [version]$TSValue; break }
-                    default { [string]$TSValue = $TSValue; break }
+                    default { [string]$TSValue = $ExecutionContext.InvokeCommand.ExpandString($TSValue); break }
                 }
+            } Else {
+                [string]$TSValue = $ExecutionContext.InvokeCommand.ExpandString($TSValue)
             }
 
             $parent = $SMSToolkitVariables
